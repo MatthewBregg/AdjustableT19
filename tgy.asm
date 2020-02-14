@@ -2476,11 +2476,25 @@ evaluate_rc_puls:
 		lds	temp1, dib_h
 		subi	temp1, 0x80
 		brcs	puls_notdigital					; no? then a frame wasn't received, don't update governor	
+                push temp3 	; Store temp3/4 in case they were used!
+	        push temp4
 		lds	temp2, dib_l					; yes? temp2 is low byte
+	        lds temp3, dib_h_old  ; dib_h/l_old into temp3/4. 
+	        lds temp4, dib_l_old 
+                ; Only set the governor if dib_h/l == dib_h/l_old, otherwise skip the governor setting and go straight to storing dib_h/l -> dib_h/l_old and clearing dib_h/l.
+	        cp temp1, temp3 ; Compare dib_h with dib_h_old
+	        brne store_old_and_clear_dib_old ;  Not equal, store and clear.
+	        cp temp2, temp4 ; Compare dib_l with dib_l_old
+	        brne store_old_and_clear_dib_old ;  Not equal, store and clear.
 		mov	governor_l, temp2				; 15 bit governor (for now, this may collide with low pole order motors in some apps)
 		sts	governor_h, temp1
+store_old_and_clear_dib_old:
+	        sts     dib_l_old, temp2 ; Load the `new` dib_h/l values into dib_h/l_old for next time!
+	        sts     dib_h_old, temp1
 		sts	dib_l, ZH					; Clear when evaluated
 		sts	dib_h, ZH
+	        pop temp4
+	        pop temp3
 
 puls_notdigital:
 		sts	dib_l, ZH					; Clear digital input buffer on long puls

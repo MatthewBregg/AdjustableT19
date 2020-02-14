@@ -405,6 +405,15 @@ i2c_blc_offset:	.byte	1
 governor_h:     .byte   1       ; governor setpoint high byte
 dib_l:		.byte	1	; digital input buffer low byte
 dib_h:		.byte	1	; digital input buffer high byte
+
+	;; Redundency: Create location dib_h/l_old, which will store the previously received dib_h/l.
+	;; Note that dib_h/l_old will only get values for dib_h/l that were a successful FlyShot command with 1 in the MSB.
+	;; From there, to ensure redundency, the Flyshot command will only be applied when dib_h/l == dib_h/l_old, aka,
+	;; when the same FLyshot command is received twice. 
+
+dib_l_old:		.byte	1	; digital input buffer old low byte
+dib_h_old:		.byte	1	; digital input buffer old high byte
+	
 ;---------------------------------
 
 motor_count:	.byte	1	; Motor number for serial control
@@ -3295,6 +3304,9 @@ control_start:
         ldi temp2,$d8
         mov governor_l, temp2            
         sts governor_h, temp1
+	;; Also initialize dib_l/h_old to a known, low/safe Flyshot speed, to be on the safe side.
+	sts dib_l_old, temp2
+	sts dib_h_old, temp1
 	pop temp2
         pop temp1
 ;; Done setting governor defaults

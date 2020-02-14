@@ -342,14 +342,16 @@ unsigned long speedOffsetMarginMax = 20;  //At max speed    than a fudge factor)
 unsigned long minRPM = 3000;              //Fly speed command min (Set this appropriately for your system to ensure passing darts at minimum speed)
 unsigned long maxRPM = 25511;             //Fly speed command max (Set this appropriately. If the drive can't actually reach this speed you won't be able to fire!)
 void updateSpeedFixed(const long setpointRPM) {
-  //Set setpointRPM from limitRPM only, update governor, push governor update, and update tach control parameters.
-  const long setpointGovernor = (320000000/(setpointRPM * motorPolepairs));   //Convert to governor, which is 8 * TIMING_MAX (i.e. TIMING_MAX * CPU_MHZ (=16) / 2) at full resolution
-  speedSetpoint = ((3 * setpointGovernor)/16);                     //Convert to tach: 6 * TIMING_MAX / 4
-  //Update margin for Orthomatic control. For now trying linear with RPM request like this
-  speedOffsetMargin = map(setpointRPM, minRPM, maxRPM, speedOffsetMarginMin, speedOffsetMarginMax);
-  //Push governor update
-  governor = setpointGovernor;
-  while(!setGovernorBoth()) {}                                
+  // For checksumming purposes, push the governor twice!
+  // The first push sets dib_h/l_old, and the second push sets dib_h/l
+  // and then the governor itself!
+  for ( int i = 0; i != 2; ++i ) {
+    //Set setpointRPM from limitRPM only, update governor, push governor update, and update tach control parameters.
+    const long setpointGovernor = (320000000/(setpointRPM * motorPolepairs));   //Convert to governor, which is 8 * TIMING_MAX (i.e. TIMING_MAX * CPU_MHZ (=16) / 2) at full resolution
+    //Push governor update
+    governor = setpointGovernor;
+    while(!setGovernorBoth()) {}   
+  }                             
 }
 
 ////2 channel Governor config ISR (Easy enough to make 2 independent ones for apps that need 2 independent speed controlled drives)
@@ -463,7 +465,11 @@ void loop(){
     //turn motor current off
     digitalWrite(8, HIGH);
     // Set the Flywheel Governor to 19K RPM. 
-    updateSpeedFixed(19000);
+    for ( int i = 0; i != 10; ++i ) {
+      // Set the speed 10 times for paranoia reasons!
+      updateSpeedFixed(19000);
+    }
+
     //clear flag
     firstRun = 0;
   }

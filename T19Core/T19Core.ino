@@ -467,6 +467,7 @@ void loop(){
     // Set the Flywheel Governor to 19K RPM. 
     for ( int i = 0; i != 10; ++i ) {
       // Set the speed 10 times for paranoia reasons!
+      // 19000 RPM makes for an excellent 140-150 RPM (if taddest bit low) on the green T19.
       updateSpeedFixed(19000);
     }
 

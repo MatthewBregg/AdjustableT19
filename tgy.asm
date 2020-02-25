@@ -472,6 +472,8 @@ eeprom_end:	.byte	1
 ; Reset and interrupt jump table
 ; When multiple interrupts are pending, the vectors are executed from top
 ; (ext_int0) to bottom.
+;;; See icp1_int here, look for TICIE1.
+;; https://web.ics.purdue.edu/~jricha14/Timer_Stuff/TIMSK.htm
 		rjmp reset	; reset
 		rjmp rcp_int	; ext_int0
 		reti		; ext_int1
@@ -639,6 +641,7 @@ eeprom_defaults_w:
 
 ;-- LED macros -----------------------------------------------------------
 
+;;;  Defined in afro_nfet.inc
 .if !defined(red_led)
 	.macro RED_on
 	.endmacro
@@ -646,6 +649,7 @@ eeprom_defaults_w:
 	.endmacro
 .endif
 
+;;;  Defined in afro_nfet.inc
 .if !defined(green_led)
 	.macro GRN_on
 	.endmacro
@@ -675,6 +679,10 @@ eeprom_defaults_w:
 	.equ CPWM_SOFT = COMP_PWM
 
 	.macro FET_on
+;;;  This if statement is true for the NpFETs, and false for the NnFETs.
+;;; Just use .message for debugging and to figure this out!!
+;;; & init_px with 1 shifted left by NxFET.
+;;; The == statement is used to ensure only the correct init_px is compared.
 		.if (INIT_PB & ((@0 == PORTB) << @1)) | (INIT_PC & ((@0 == PORTC) << @1)) | (INIT_PD & ((@0 == PORTD) << @1))
 		cbi	@0, @1
 		.else
@@ -729,6 +737,7 @@ eeprom_defaults_w:
 
 	.macro PWM_FOCUS_A_on
 		.if COMP_PWM
+		.error "NOPE"
 		cpse	temp3, temp4
 		PWM_COMP_A_on
 		.endif
@@ -769,6 +778,7 @@ eeprom_defaults_w:
 
 	; For PWM state mirroring in commutation routines
 	.if HIGH_SIDE_PWM
+	        .error "NOPE"
 		.equ	PWM_A_PORT_in = ApFET_port
 		.equ	PWM_B_PORT_in = BpFET_port
 		.equ	PWM_C_PORT_in = CpFET_port
@@ -841,190 +851,13 @@ eeprom_defaults_w:
 	.endmacro
 
 .elif defined(ENABLE_ALL)
-; Three logic level PWM/ENABLE-style driver, with diode emulation mode or
-; off state at the middle level on the PWM pin. This is accomplished by
-; setting a pull-up rather than drive high. With this method, every FET
-; toggle can be a single I/O instruction, rather than having to select
-; high or low in advance to toggling enable. The following macros are used:
-;
-; XnFET_on  -> cbi PWM_X_PORT, PWM_X (drain through ext pull-down)
-; XnFET_off -> sbi PWM_X_PORT, PWM_X (pull-up pin with ext pull-down)
-; XpFET_on  -> sbi PWM_X_DDR, PWM_X (drive-up pin)
-; XpFET_off -> cbi PWM_X_DDR, PWM_X (pull-up pin with ext pull-down)
-;
-; COMP_PWM on these is done in hardware rather than software, so we can
-; just toggle the PORT value after PWM_FOCUS sets DDR (output mode).
-; This results in the following macro arrangement:
-;
-; TRI	CPWM	HIGH_SIDE_PWM	: PWM ON	PWM OFF		PWM_X_PORT_in
-; 0	0	0		: XnFET_on	XnFET_off	XnFET_port
-; 0	0	1		: XpFET_on	XpFET_off	XpFET_port
-; 0	1	0		: XnFET_on	XnFET_off	XnFET_port
-; 0	1	1		: XpFET_on	XpFET_off	XpFET_port
-; 1	0	0		: XnFET_on	XnFET_off	PWM_X_PORT
-; 1	0	1		: XpFET_on	XpFET_off	PWM_X_DDR
-; 1	1	0		: XnFET_on	XnFET_off	PWM_X_PORT
-; 1	1	1		: XnFET_off	XnFET_on	PWM_X_PORT
-;
-; For the last case, PWM_X_off actually turns low side on which isn't how
-; we want to leave the phase after commutating. PWM_X_clear will take care
-; of this.
-;
-; We leave ENABLE high once initialized as some drivers will actually
-; shut down rather than just using the input as a logic gate.
-;
-; We prefer HIGH_SIDE_PWM as diode emulation mode in these drivers
-; typically allows active freewheeling only in this orientation.
-
-	.equ CPWM_SOFT = 0
-
-	.macro AnFET_on
-		cbi	PWM_A_PORT, PWM_A
-	.endmacro
-	.macro AnFET_off
-		sbi	PWM_A_PORT, PWM_A
-	.endmacro
-	.macro ApFET_on
-		sbi	PWM_A_DDR, PWM_A
-	.endmacro
-	.macro ApFET_off
-		cbi	PWM_A_DDR, PWM_A
-	.endmacro
-	.macro BnFET_on
-		cbi	PWM_B_PORT, PWM_B
-	.endmacro
-	.macro BnFET_off
-		sbi	PWM_B_PORT, PWM_B
-	.endmacro
-	.macro BpFET_on
-		sbi	PWM_B_DDR, PWM_B
-	.endmacro
-	.macro BpFET_off
-		cbi	PWM_B_DDR, PWM_B
-	.endmacro
-	.macro CnFET_on
-		cbi	PWM_C_PORT, PWM_C
-	.endmacro
-	.macro CnFET_off
-		sbi	PWM_C_PORT, PWM_C
-	.endmacro
-	.macro CpFET_on
-		sbi	PWM_C_DDR, PWM_C
-	.endmacro
-	.macro CpFET_off
-		cbi	PWM_C_DDR, PWM_C
-	.endmacro
-
-	.macro PWM_FOCUS_A_on
-		.if COMP_PWM
-		sbrc	flags1, POWER_ON
-		ApFET_on
-		.endif
-	.endmacro
-	.macro PWM_FOCUS_A_off
-		.if COMP_PWM
-		ApFET_off
-		.endif
-	.endmacro
-
-	.macro PWM_FOCUS_B_on
-		.if COMP_PWM
-		sbrc	flags1, POWER_ON
-		BpFET_on
-		.endif
-	.endmacro
-	.macro PWM_FOCUS_B_off
-		.if COMP_PWM
-		BpFET_off
-		.endif
-	.endmacro
-
-	.macro PWM_FOCUS_C_on
-		.if COMP_PWM
-		sbrc	flags1, POWER_ON
-		CpFET_on
-		.endif
-	.endmacro
-	.macro PWM_FOCUS_C_off
-		.if COMP_PWM
-		CpFET_off
-		.endif
-	.endmacro
-
-	; For PWM state mirroring in commutation routines
-	.if COMP_PWM || !HIGH_SIDE_PWM
-		.equ	PWM_A_PORT_in = PWM_A_PORT
-		.equ	PWM_B_PORT_in = PWM_B_PORT
-		.equ	PWM_C_PORT_in = PWM_C_PORT
-	.else
-		.equ	PWM_A_PORT_in = PWM_A_DDR
-		.equ	PWM_B_PORT_in = PWM_B_DDR
-		.equ	PWM_C_PORT_in = PWM_C_DDR
-	.endif
-
-	.macro PWM_ALL_off
-		all_nFETs_off @0
-	.endmacro
-
-	.macro all_pFETs_off
-		.if PWM_A_DDR != PWM_B_DDR || PWM_A_DDR != PWM_C_DDR
-			ApFET_off
-			BpFET_off
-			CpFET_off
-		.else
-			in	@0, PWM_A_DDR
-			cbr	@0, (1<<PWM_A)+(1<<PWM_B)+(1<<PWM_C)
-			out	PWM_A_DDR, @0
-		.endif
-	.endmacro
-
-	.macro all_nFETs_off
-		.if PWM_A_PORT != PWM_B_PORT || PWM_A_PORT != PWM_C_PORT
-			AnFET_off
-			BnFET_off
-			CnFET_off
-		.else
-			in	@0, PWM_A_PORT
-			sbr	@0, (1<<PWM_A)+(1<<PWM_B)+(1<<PWM_C)
-			out	PWM_A_PORT, @0
-		.endif
-	.endmacro
-
-	.macro nFET_brake
-		.if PWM_A_PORT != PWM_B_PORT || PWM_A_PORT != PWM_C_PORT
-			AnFET_on
-			BnFET_on
-			CnFET_on
-		.else
-			in	@0, PWM_A_PORT
-			cbr	@0, (1<<PWM_A)+(1<<PWM_B)+(1<<PWM_C)
-			out	PWM_A_PORT, @0
-		.endif
-	.endmacro
-
-.endif
+	.error "nope"
+.endif									        ;;
 
 ;-- Commutation drive macros ---------------------------------------------
 
 .if HIGH_SIDE_PWM
-	.macro COMMUTATE_A_on
-		AnFET_on
-	.endmacro
-	.macro COMMUTATE_A_off
-		AnFET_off
-	.endmacro
-	.macro COMMUTATE_B_on
-		BnFET_on
-	.endmacro
-	.macro COMMUTATE_B_off
-		BnFET_off
-	.endmacro
-	.macro COMMUTATE_C_on
-		CnFET_on
-	.endmacro
-	.macro COMMUTATE_C_off
-		CnFET_off
-	.endmacro
+	.error "nope"
 .else
 	.macro COMMUTATE_A_on
 		ApFET_on
@@ -1050,6 +883,7 @@ eeprom_defaults_w:
 
 .macro PWM_A_on
 	.if !defined(AnFET) && COMP_PWM && HIGH_SIDE_PWM
+	        .error "Nope"
 		AnFET_off
 	.elif HIGH_SIDE_PWM
 		ApFET_on
@@ -1059,6 +893,7 @@ eeprom_defaults_w:
 .endmacro
 .macro PWM_A_off
 	.if !defined(AnFET) && COMP_PWM && HIGH_SIDE_PWM
+	        .error "Nope"
 		AnFET_on
 	.elif HIGH_SIDE_PWM
 		ApFET_off
@@ -1069,8 +904,10 @@ eeprom_defaults_w:
 .macro PWM_A_clear
 		in	temp1, PWM_A_PORT_in
 	.if !defined(AnFET) && COMP_PWM && HIGH_SIDE_PWM
+	        .error "Nope"
 		AnFET_off
 	.elif HIGH_SIDE_PWM
+	        .error "Nope"
 		ApFET_off
 	.else
 		AnFET_off
@@ -1080,8 +917,10 @@ eeprom_defaults_w:
 .macro PWM_A_copy
 		cpse	temp1, temp2
 	.if !defined(AnFET) && COMP_PWM && HIGH_SIDE_PWM
+	        .error "Nope"
 		AnFET_on
 	.elif HIGH_SIDE_PWM
+	        .error "Nope"
 		ApFET_on
 	.else
 		AnFET_on
@@ -1090,8 +929,10 @@ eeprom_defaults_w:
 
 .macro PWM_B_on
 	.if !defined(BnFET) && COMP_PWM && HIGH_SIDE_PWM
+	        .error "Nope"
 		BnFET_off
 	.elif HIGH_SIDE_PWM
+	        .error "Nope"
 		BpFET_on
 	.else
 		BnFET_on
@@ -1109,8 +950,10 @@ eeprom_defaults_w:
 .macro PWM_B_clear
 		in	temp1, PWM_B_PORT_in
 	.if !defined(BnFET) && COMP_PWM && HIGH_SIDE_PWM
+	        .error "Nope"
 		BnFET_off
 	.elif HIGH_SIDE_PWM
+	        .error "Nope"
 		BpFET_off
 	.else
 		BnFET_off
@@ -1120,8 +963,10 @@ eeprom_defaults_w:
 .macro PWM_B_copy
 		cpse	temp1, temp2
 	.if !defined(BnFET) && COMP_PWM && HIGH_SIDE_PWM
+	        .error "Nope"
 		BnFET_on
 	.elif HIGH_SIDE_PWM
+	        .error "Nope"
 		BpFET_on
 	.else
 		BnFET_on
@@ -1130,8 +975,10 @@ eeprom_defaults_w:
 
 .macro PWM_C_on
 	.if !defined(CnFET) && COMP_PWM && HIGH_SIDE_PWM
+	        .error "Nope"
 		CnFET_off
 	.elif HIGH_SIDE_PWM
+	        .error "Nope"
 		CpFET_on
 	.else
 		CnFET_on
@@ -1139,8 +986,10 @@ eeprom_defaults_w:
 .endmacro
 .macro PWM_C_off
 	.if !defined(CnFET) && COMP_PWM && HIGH_SIDE_PWM
+	        .error "Nope"
 		CnFET_on
 	.elif HIGH_SIDE_PWM
+	        .error "Nope"
 		CpFET_off
 	.else
 		CnFET_off
@@ -1149,8 +998,10 @@ eeprom_defaults_w:
 .macro PWM_C_clear
 		in	temp1, PWM_C_PORT_in
 	.if !defined(CnFET) && COMP_PWM && HIGH_SIDE_PWM
+	        .error "Nope"
 		CnFET_off
 	.elif HIGH_SIDE_PWM
+	        .error "Nope"
 		CpFET_off
 	.else
 		CnFET_off
@@ -1160,8 +1011,10 @@ eeprom_defaults_w:
 .macro PWM_C_copy
 		cpse	temp1, temp2
 	.if !defined(CnFET) && COMP_PWM && HIGH_SIDE_PWM
+	        .error "Nope"
 		CnFET_on
 	.elif HIGH_SIDE_PWM
+	        .error "Nope"
 		CpFET_on
 	.else
 		CnFET_on
@@ -1171,57 +1024,13 @@ eeprom_defaults_w:
 ;-- Complementary PWM macros ---------------------------------------------
 
 .if CPWM_SOFT
-	.macro PWM_COMP_A_on
-		.if HIGH_SIDE_PWM
-			AnFET_on
-		.else
-			ApFET_on
-		.endif
-	.endmacro
-
-	.macro PWM_COMP_A_off
-		.if HIGH_SIDE_PWM
-			AnFET_off
-		.else
-			ApFET_off
-		.endif
-	.endmacro
-
-	.macro PWM_COMP_B_on
-		.if HIGH_SIDE_PWM
-			BnFET_on
-		.else
-			BpFET_on
-		.endif
-	.endmacro
-
-	.macro PWM_COMP_B_off
-		.if HIGH_SIDE_PWM
-			BnFET_off
-		.else
-			BpFET_off
-		.endif
-	.endmacro
-
-	.macro PWM_COMP_C_on
-		.if HIGH_SIDE_PWM
-			CnFET_on
-		.else
-			CpFET_on
-		.endif
-	.endmacro
-
-	.macro PWM_COMP_C_off
-		.if HIGH_SIDE_PWM
-			CnFET_off
-		.else
-			CpFET_off
-		.endif
-	.endmacro
+	.error "Nope"
 .endif
 
 ;-- RC pulse setup and edge handling macros ------------------------------
+;;; Bregg: This code is in use!
 
+;;;  These configure which interrupt TCCR1B triggers on to, rising edge, falling edge, enabled/disabled.
 .if USE_ICP
 .macro rcp_int_enable
 		in	@0, TIMSK
@@ -1250,6 +1059,7 @@ eeprom_defaults_w:
 		out	GICR, ZH	; disable ext_int0
 .endmacro
 .if USE_INT0 == 1
+	.error "NOPE"
 .macro rcp_int_rising_edge
 		ldi	@0, (1<<ISC01)+(1<<ISC00)
 		out	MCUCR, @0	; set next int0 to rising edge
@@ -1374,6 +1184,7 @@ eeprom_defaults_w:
 	.endif
 .endif
 .endmacro
+;;;  Bregg: Here is where the meat begins!
 
 ;-----bko-----------------------------------------------------------------
 ; Timer2 overflow interrupt (output PWM) -- the interrupt vector actually
@@ -1400,58 +1211,20 @@ eeprom_defaults_w:
 ; is longer than will fit in 8 bits. This is tracked in tcnt2h.
 
 .if MOTOR_BRAKE || LOW_BRAKE
-pwm_brake_on:
-		cpse	tcnt2h, ZH
-		rjmp	pwm_again
-		in	i_sreg, SREG
-		nFET_brake i_temp1
-		ldi	i_temp1, 0xff
-		cp	off_duty_l, i_temp1	; Check for 0 off-time
-		cpc	off_duty_h, ZH
-		breq	pwm_brake_on1
-		ldi	ZL, pwm_brake_off	; Not full on, so turn it off next
-		lds	i_temp2, brake_sub
-		sub	sys_control_l, i_temp2
-		brne	pwm_brake_on1
-		neg	duty_l			; Increase duty
-		sbc	duty_h, i_temp1		; i_temp1 is 0xff aka -1
-		com	duty_l
-		com	off_duty_l		; Decrease off duty
-		sbc	off_duty_l, ZH
-		sbc	off_duty_h, ZH
-		com	off_duty_l
-pwm_brake_on1:	mov	tcnt2h, duty_h
-		out	SREG, i_sreg
-		out	TCNT2, duty_l
-		reti
-
-pwm_brake_off:
-		cpse	tcnt2h, ZH
-		rjmp	pwm_again
-		in	i_sreg, SREG
-		ldi	ZL, pwm_brake_on
-		mov	tcnt2h, off_duty_h
-		all_nFETs_off i_temp1
-		out	SREG, i_sreg
-		out	TCNT2, off_duty_l
-		reti
+	.error "Nope!"
 .endif
 
 .if DEAD_TIME_HIGH > 7
+;;; Bregg: This is Used!!
 .equ	EXTRA_DEAD_TIME_HIGH = DEAD_TIME_HIGH - 7
 .else
+	.error "nope"
 .equ	EXTRA_DEAD_TIME_HIGH = 0
 .endif
 
 pwm_on_fast_high:
 .if CPWM_SOFT && EXTRA_DEAD_TIME_HIGH > MAX_BUSY_WAIT_CYCLES
-		in	i_sreg, SREG
-		dec	tcnt2h
-		brne	pwm_on_fast_high_again
-		ldi	ZL, pwm_on_fast
-pwm_on_fast_high_again:
-		out	SREG, i_sreg
-		reti
+	.error "nope"
 .endif
 
 pwm_on_high:
@@ -1470,31 +1243,7 @@ pwm_again:
 
 pwm_on:
 .if CPWM_SOFT
-		sbrc	flags2, A_FET
-		PWM_COMP_A_off
-		sbrc	flags2, B_FET
-		PWM_COMP_B_off
-		sbrc	flags2, C_FET
-		PWM_COMP_C_off
-	.if EXTRA_DEAD_TIME_HIGH > MAX_BUSY_WAIT_CYCLES
-		; Reschedule to interrupt once the dead time has passed
-		.if high(EXTRA_DEAD_TIME_HIGH)
-		ldi	i_temp1, high(EXTRA_DEAD_TIME_HIGH)
-		mov	tcnt2h, i_temp1
-		ldi	ZL, pwm_on_fast_high
-		.else
-		ldi	ZL, pwm_on_fast
-		.endif
-		ldi	i_temp1, 0xff - low(EXTRA_DEAD_TIME_HIGH)
-		out	TCNT2, i_temp1
-		reti				; Do something else while we wait
-		.equ	CPWM_OVERHEAD_HIGH = 7 + 8 + EXTRA_DEAD_TIME_HIGH
-	.else
-		; Waste cycles to wait for the dead time
-		cycle_delay EXTRA_DEAD_TIME_HIGH
-		.equ	CPWM_OVERHEAD_HIGH = 7 + EXTRA_DEAD_TIME_HIGH
-		; Fall through
-	.endif
+	.error "nope!"
 .endif
 pwm_on_fast:
 		sbrc	flags2, A_FET
@@ -1551,13 +1300,17 @@ pwm_off:
 .endif
 ;-----bko-----------------------------------------------------------------
 ; timer1 output compare interrupt
-t1oca_int:	in	i_sreg, SREG
+t1oca_int:	in	i_sreg, SREG ; Save sreg
 		lds	i_temp1, ocr1ax
-		subi	i_temp1, 1
-		brcc	t1oca_int1
+		subi	i_temp1, 1 ; Subtract 1 from ocr1ax.
+	        brcc	t1oca_int1 ; If 1 was larger than ocr1ax presubtraction, then set the carry.
+	;; If the carry was cleared, AKA, OCR1ax was greater than or equal to 1, then skip this instruction,
+	;; save the new value ocr1ax -1 to ocr1ax, and return.
+	;; However, if the absolute value of 1 is larger than ocr1ax, then set the carry bit and proceed to the
+	;; following instruction, which will set the flag.
 		cbr	flags0, (1<<OCT1_PENDING)	; signal OCT1A passed
 t1oca_int1:	sts	ocr1ax, i_temp1
-		out	SREG, i_sreg
+		out	SREG, i_sreg ; Restore sreg.
 		reti
 ;-----bko-----------------------------------------------------------------
 ; timer1 overflow interrupt (happens every 4096µs)
@@ -1575,7 +1328,7 @@ t1ovfl_int0:
 		andi	i_temp1, 15			; Every 16 overflows
 		brne	t1ovfl_int1
 		tst	rc_timeout
-		breq	t1ovfl_int2
+		breq	t1ovfl_int
 		dec	rc_timeout
 t1ovfl_int1:	out	SREG, i_sreg
 		reti
@@ -1817,6 +1570,7 @@ urxc_int:
 ; the received byte is used as throttle input. 0 is neutral,
 ; >= 200 is FULL_POWER.
 	.if USE_UART
+	.error "NOPE"
 		in	i_sreg, SREG
 		in	i_temp1, UDR
 		cpi	i_temp1, 0xf5		; Start throttle byte sequence
@@ -1838,7 +1592,7 @@ urxc_exit:	out	SREG, i_sreg
 		reti
 	.endif
 ;-----bko-----------------------------------------------------------------
-; beeper: timer0 is set to 1µs/count
+; beeper: timer0 is set to 1µs/count;; I'm fairly certain this is wrong, and timer0 is set to .5us/count...
 beep_f1:	ldi	temp2, 80
 		ldi	temp4, 200
 		RED_on
@@ -2475,7 +2229,7 @@ evaluate_rc_puls:
 		; Very crude check: is the highest bit 1?
 		lds	temp1, dib_h
 		subi	temp1, 0x80
-		brcs	puls_notdigital					; no? then a frame wasn't received, don't update governor	
+		brcs	puls_notdigital	; no? then a frame wasn't received, don't update governor	
                 push temp3 	; Store temp3/4 in case they were used!
 	        push temp4
 		lds	temp2, dib_l					; yes? temp2 is low byte
@@ -2517,6 +2271,9 @@ rc_duty_set:	sts	rc_duty_l, YL
 		mov	rc_timeout, temp1	; Short rc_timeout when driving
 		rjmp	set_new_duty_l		; Skip reload into YL:YH
 rc_no_set_duty:	ldi	temp1, 12		; More than 10 needed to arm
+;;; Compares rc_timeout with 12, if rc_timeout is less than 12, the carry will be set.
+;;; adc will then add rc_timeout + zh + carry, so if rc_timeout < 12, ++rc_timeout is what this does.
+;;; This allows the rc_timeout to tick upwards!!
 		cp	rc_timeout, temp1
 		adc	rc_timeout, ZH
 		ret
@@ -3194,6 +2951,15 @@ clear_loop1:	cp	ZL, r0
 		out	MCUCSR, ZH
 
 	; Initialize ports
+	.message "b"
+	.message DIR_Pb
+	.message init_pb
+	.message "c"
+	.message DIR_Pc
+	.message init_pc
+	.message "d"
+	.message DIR_PD
+	.message init_pd
 		outi	PORTB, INIT_PB, temp1
 		outi	DDRB, DIR_PB | (MOTOR_DEBUG<<3) | (MOTOR_DEBUG<<4) | (MOTOR_DEBUG<<5), temp1
 		outi	PORTC, INIT_PC, temp1
@@ -3220,11 +2986,15 @@ clear_loop1:	cp	ZL, r0
 		.endif
 
 	; Start timers except output PWM
+	       .message "T0CLK, T1CLK"
+	       .message T0CLK
+	       .message T1CLK
 		outi	TCCR0, T0CLK, temp1	; timer0: beep control, delays
 		outi	TCCR1B, T1CLK, temp1	; timer1: commutation timing, RC pulse measurement
 		out	TCCR2, ZH		; timer2: PWM, stopped
 
 	; Enable watchdog (WDTON may be set or unset)
+	;; Bregg: Add watchdog timer to the C++ code!
 		ldi	temp1, (1<<WDCE)+(1<<WDE)
 		out	WDTCR, temp1
 		ldi	temp1, (1<<WDE)		; Fastest option: ~16.3ms timeout
@@ -3326,31 +3096,6 @@ control_start:
 ;; Done setting governor defaults
 
 
-; Check cell count
-.if BLIP_CELL_COUNT
-	.if defined(mux_voltage) && !CELL_COUNT
-		rcall	adc_cell_count
-		cpi	temp1, 5
-		brlo	cell_count_good		; Detection of >=~5 LiPo cells becomes ambiguous based on charge state
-		ldi	temp1, 0
-cell_count_good:
-	.else
-		ldi	temp1, CELL_COUNT
-	.endif
-		mov	YL, temp1		; Beep clobbers temp1-temp5
-		cpi	YL, 0
-		breq	cell_blipper1
-cell_blipper:
-		rcall	wait120ms
-		ldi	temp2, 10		; Short blip (not too long for this)
-		rcall	beep_f4_freq
-		dec	YL
-		brne	cell_blipper
-		rcall	wait120ms
-cell_blipper1:
-
-.endif
-
 control_disarm:
 	; LEDs off while disarmed
 		BLUE_off
@@ -3361,38 +3106,16 @@ control_disarm:
 		rcall	puls_scale
 
 	; Enable timer interrupts (we only do this late to improve beep quality)
-		ldi	temp1, (1<<TOIE1)+(1<<OCIE1A)+(1<<TOIE2)
+	ldi	temp1, (1<<TOIE1)+(1<<OCIE1A)+(1<<TOIE2)
+	;; https://web.ics.purdue.edu/~jricha14/Timer_Stuff/TIFR.htm
 		out	TIFR, temp1		; Clear TOIE1, OCIE1A, and TOIE2 flags
+	;; https://web.ics.purdue.edu/~jricha14/Timer_Stuff/TIMSK.htm
+	;; https://garretlab.web.fc2.com/en/arduino/inside/hardware/arduino/avr/cores/arduino/Tone.cpp/TIMER2_COMPA_vect.html
+
 		out	TIMSK, temp1		; Enable t1ovfl_int, t1oca_int, t2ovfl_int
 
-		.if defined(HK_PROGRAM_CARD)
-	; This program card seems to send data at 1200 baud N81,
-	; Messages start with 0xdd 0xdd, have 7 bytes of config,
-	; and end with 0xde, sent two seconds after power-up or
-	; after any jumper change.
-		.equ	BAUD_RATE = 1200
-		.equ	UBRR_VAL = F_CPU / BAUD_RATE / 16 - 1
-		outi	UBRRH, high(UBRR_VAL), temp1
-		outi	UBRRL, low(UBRR_VAL), temp1
-		sbi	UCSRB, RXEN		; Do programming card rx by polling
-		outi	UCSRC, (1<<URSEL)|(1<<UCSZ1)|(1<<UCSZ0), temp1	; N81
-		.endif
-
-	; Initialize input sources (i2c and/or rc-puls)
-		.if USE_UART && !defined(HK_PROGRAM_CARD)
-		.equ	BAUD_RATE = 38400
-		.equ	UBRR_VAL = F_CPU / BAUD_RATE / 16 - 1
-		outi	UBRRH, high(UBRR_VAL), temp1
-		outi	UBRRL, low(UBRR_VAL), temp1
-		sbi	UCSRB, RXEN		; We don't actually tx
-		outi	UCSRC, (1<<URSEL)|(1<<UCSZ1)|(1<<UCSZ0), temp1	; N81
-		in	temp1, UDR
-		sbi	UCSRA, RXC		; clear flag
-		sbi	UCSRB, RXCIE		; enable reception irq
-		.endif
-		.if USE_I2C
-		rcall	i2c_init
-		.endif
+	; Initialize input sources (rc-puls)
+	;; We use ICP.
 		.if USE_INT0 || USE_ICP
 		rcp_int_rising_edge temp1
 		rcp_int_enable temp1
@@ -3400,6 +3123,8 @@ control_disarm:
 
 	; Wait for one of the input sources to give arming input
 
+;;; On evaluating a puls, goes to evaluate_rc_init, which then goes enables the
+;;; SET_DUTY flag, which then goes to start_from_running, which is where the magic happens.
 i_rc_puls1:	clr	rc_timeout
 		cbr	flags1, (1<<EVAL_RC)+(1<<I2C_MODE)+(1<<UART_MODE)
 		sts	rct_boot, ZH
@@ -3407,6 +3132,8 @@ i_rc_puls1:	clr	rc_timeout
 i_rc_puls2:	wdr
 		.if defined(HK_PROGRAM_CARD)
 		.endif
+	;; SPin loop in here, beaconing if enabled until EVAL_RC is set, and then jump
+	;; to i_rc_puls_rx and start the ESC! 
 		sbrc	flags1, EVAL_RC
 		rjmp	i_rc_puls_rx
 		.if BOOT_JUMP
@@ -3421,30 +3148,31 @@ i_rc_puls2:	wdr
 		rcall	beep_f3			; Beacon
 		.endif
 		rjmp	i_rc_puls2
-i_rc_puls_rx:	rcall	evaluate_rc_init
+i_rc_puls_rx:	rcall	evaluate_rc_init ;;; Process the pulse, (set the duty cycle?) and then
 		lds	YL, rc_duty_l
 		lds	YH, rc_duty_h
-		adiw	YL, 0			; Test for zero
-		brne	i_rc_puls1
-		ldi	temp1, 10		; wait for this count of receiving power off
+;;; We need to receive zero 10 times in a row to ARM!
+		adiw	YL, 0			; Test for zero by adding 0, addiw sets the z flag is the result is 0.
+;;; If non zero pulse received, return to i_rc_puls, clear rc_timeout, and proceed again.
+		brne	i_rc_puls1		; If non zero pulse, return here!
+		ldi	temp1, 10		; wait for this count of before arming 
+;;; Check if we have hit 10 counts of receiving a 'power zero' signal.
+;;; If not, return to i_rc_puls2, to await more pulses WITHOUT clearing rc_timeout, otherwise follow down to 
+;;; Arm the ESC.
 		cp	rc_timeout, temp1
-		brlo	i_rc_puls2
-		.if USE_I2C
-		sbrs	flags1, I2C_MODE
-		out	TWCR, ZH		; Turn off I2C and interrupt
-		.endif
-		.if USE_UART
-		sbrs	flags1, UART_MODE
-		cbi	UCSRB, RXEN		; Turn off receiver
-		.endif
+		brlo	i_rc_puls2 ; Return for more pulses.
 		.if USE_INT0 || USE_ICP
 		mov	temp1, flags1
 		andi	temp1, (1<<I2C_MODE)+(1<<UART_MODE)
+;;; Branch if temp1 is now 0 (well, if the Z flag got set by andi, which means temp1 is now 0).
+;;; AKA, if we are NOT using i2c/uart mode, then skip over turning off rc puls with rcp_int_disable.
+;;; If we are using i2c/uart mode, then well, do disable this interrupt so it doesn't interfere!
 		breq	i_rc_puls3
 		rcp_int_disable temp1		; Turn off RC pulse interrupt
 i_rc_puls3:
 		.endif
 
+;;; We've got 10 rc_timeouts, so time to ARM the ESC!
 		rcall	beep_f1
 		rcall	beep_f1			;torukmakto4 edit
 
@@ -3519,6 +3247,9 @@ wait_for_power_on:
 		rcall	beep_f4
 no_idle_beep:
 		.endif
+;;; RC_timeout has hit 0, let rct_beacon be incremented, if rct_beacon gets high enough, disarm.
+;;; RC_timeout then overflows/underflows back.
+;;; rct_beaon is incremented when rc_timeout hits 0 by t1ovfl_int0.
 		tst	rc_timeout
 		brne	wait_for_power_on	; Tight loop unless rc_timeout is zero
 		.if BOOT_JUMP

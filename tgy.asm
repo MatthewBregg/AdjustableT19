@@ -1300,6 +1300,7 @@ pwm_off:
 .endif
 ;-----bko-----------------------------------------------------------------
 ; timer1 output compare interrupt
+;;; Saving the SREG is needed for assembly (SREG has z flag and C flag among others, so addi/andi/etc will mess it up, but higher level languages will do this for me automatically!!!).
 t1oca_int:	in	i_sreg, SREG ; Save sreg
 		lds	i_temp1, ocr1ax
 		subi	i_temp1, 1 ; Subtract 1 from ocr1ax.
@@ -2263,6 +2264,7 @@ puls_zero:	clr	YL						; disable, set 0% duty
 		clr	YH
 		rjmp	rc_duty_set
 
+;;; We placed MAX_POWER into YL/YH earlier in puls_notdigital, so now set the rc_duty_l to this!
 rc_duty_set:	sts	rc_duty_l, YL
 		sts	rc_duty_h, YH
 		sbrs	flags0, SET_DUTY
@@ -2341,6 +2343,10 @@ puls_scale_alias_toggle:
 		ldi	temp1, (1<<RCP_ALIAS)
 		eor	flags0, temp1
 .endif
+;;; BREGG: From what I can tell, this is obsolete code, it is used
+;;; https://github.com/sim-/tgy/blob/aa1a55ae23fe26f93d044e9e2d1e517e50bb2f91/tgy.asm#L2564
+;;; to scale the input, but we aren't doing that, we are doing 0/full power, which means that
+;;; we delete all that scaling code in evaluate_rc_puls and skip straight to rc_set_duty.
 ;-----bko-----------------------------------------------------------------
 ; Calculate the neutral offset and forward (and reverse) scaling factors
 ; to line up with the high/low (and neutral) pulse lengths.
@@ -3103,6 +3109,9 @@ control_disarm:
 		RED_off
 
 		cbr	flags0, (1<<SET_DUTY)	; We need to count a full rc_timeout for safe arming
+;;; This is obsolete, this is for scaling the input puls, the scaled value calculated here is used in rc_duty_set
+;;; but for our use, we always are 0/max, so we don't bother scaling and just slam rc_duty_set to max!
+;;; We set rc_duty to max in evaluate_rc_puls, where we set YL/YH to MAX_POWER and then call set_rc_duty.
 		rcall	puls_scale
 
 	; Enable timer interrupts (we only do this late to improve beep quality)
@@ -3197,42 +3206,45 @@ wait_for_power_on_init:
 		sts	rct_beacon, ZH
 
 		.if MOTOR_BRAKE || LOW_BRAKE
-		lds	temp3, brake_want
-		lds	temp4, brake_active
-		cp	temp3, temp4
-		breq	wait_for_power_on
-
-		rcall	switch_power_off	; Disable any active brake
-		sts	brake_active, temp3	; Set new brake_active to brake_want
-
-		cpi	temp3, 1		; Neutral brake
-		brne	set_brake1
-		ldi	YL, low(1 << BRAKE_SPEED)
-		sts	brake_sub, YL
-		ldi2	YL, YH, BRAKE_POWER
-		rjmp	set_brake_duty
-
-set_brake1:	cpi	temp3, 2		; Thumb brake
-		brne	wait_for_power_on
-		ldi	YL, low(1 << LOW_BRAKE_SPEED)
-		sts	brake_sub, YL
-		ldi2	YL, YH, LOW_BRAKE_POWER
-
-set_brake_duty:	ldi2	temp1, temp2, MAX_POWER
-		sub	temp1, YL		; Calculate OFF duty
-		sbc	temp2, YH
-		rcall	set_new_duty_set
-		ldi	ZL, low(pwm_brake_off)	; Enable PWM brake mode
-		clr	tcnt2h
-		clr	sys_control_l		; Abused as duty update divisor
-		outi	TCCR2, T2CLK, temp1	; Enable PWM, cleared later by switch_power_off
+	.error "NOPE"
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; 		lds	temp3, brake_want								  ;;
+;; 		lds	temp4, brake_active								  ;;
+;; 		cp	temp3, temp4									  ;;
+;; 		breq	wait_for_power_on								  ;;
+;; 													  ;;
+;; 		rcall	switch_power_off	; Disable any active brake				  ;;
+;; 		sts	brake_active, temp3	; Set new brake_active to brake_want			  ;;
+;; 													  ;;
+;; 		cpi	temp3, 1		; Neutral brake						  ;;
+;; 		brne	set_brake1									  ;;
+;; 		ldi	YL, low(1 << BRAKE_SPEED)							  ;;
+;; 		sts	brake_sub, YL									  ;;
+;; 		ldi2	YL, YH, BRAKE_POWER								  ;;
+;; 		rjmp	set_brake_duty									  ;;
+;; 													  ;;
+;; set_brake1:	cpi	temp3, 2		; Thumb brake						  ;;
+;; 		brne	wait_for_power_on								  ;;
+;; 		ldi	YL, low(1 << LOW_BRAKE_SPEED)							  ;;
+;; 		sts	brake_sub, YL									  ;;
+;; 		ldi2	YL, YH, LOW_BRAKE_POWER								  ;;
+;; 													  ;;
+;; set_brake_duty:	ldi2	temp1, temp2, MAX_POWER							  ;;
+;; 		sub	temp1, YL		; Calculate OFF duty					  ;;
+;; 		sbc	temp2, YH									  ;;
+;; 		rcall	set_new_duty_set								  ;;
+;; 		ldi	ZL, low(pwm_brake_off)	; Enable PWM brake mode					  ;;
+;; 		clr	tcnt2h										  ;;
+;; 		clr	sys_control_l		; Abused as duty update divisor				  ;;
+;; 		outi	TCCR2, T2CLK, temp1	; Enable PWM, cleared later by switch_power_off		  ;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 		.endif
 
 wait_for_power_on:
 		wdr
 		sbrc	flags1, EVAL_RC
 		rjmp	wait_for_power_rx
-		.if BEEP_RCP_ERROR
+		.if BEEP_RCP_ERROR	  ; Bregg: Not porting this, part of RC puls signalling.
 		sbrc	flags0, RCP_ERROR	; Check if we've seen bad PWM edges
 		rcall	rcp_error_beep
 		.endif
@@ -3271,6 +3283,8 @@ wait_for_power_rx:
 		sbrc	flags0, EEPROM_WRITE
 		rcall	eeprom_write_block
 		.endif
+;;; While rc_duty isn't set here, dib_l/h and the SET_DUTY bit in flag 0 might be!
+;;; Plus this can be called earlier! I should make sure these all have sane defaults...
 		rcall	evaluate_rc		; Only get rc_duty, don't set duty
 		tst	rc_timeout		; If not a valid signal, loop
 		breq	wait_for_power_on	; while increasing boot/beacon timers

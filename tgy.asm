@@ -3288,7 +3288,7 @@ wait_for_power_rx:
 		rcall	evaluate_rc		; Only get rc_duty, don't set duty
 		tst	rc_timeout		; If not a valid signal, loop
 		breq	wait_for_power_on	; while increasing boot/beacon timers
-		adiw	YL, 0
+		adiw	YL, 0			; YL set here, rc_duty is set via YL in evaluate_rc
 		brne	start_from_running	; If power requested, start; otherwise,
 		rjmp	wait_for_power_on_init	; loop while resetting boot/beacon timers
 
@@ -3303,6 +3303,7 @@ start_from_running:
 		movw	sys_control_l, YL	; align to a timing harmonic
 
 		sbr	flags0, (1<<SET_DUTY)
+	        ;;  BREGG, we are here!
 		; Set STARTUP flag and call update_timing which will set
 		; last_tcnt1 and set the duty (limited by STARTUP) and
 		; set POWER_ON.

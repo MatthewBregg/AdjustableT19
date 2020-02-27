@@ -3664,11 +3664,14 @@ wait_for_high:	sbr	flags1, (1<<ACO_EDGE_HIGH)
 ;
 wait_for_edge:
 		lds	temp1, powerskip	; Are we trying to track a maybe running motor?
-		subi	temp1, 1
+		subi	temp1, 1		; If 1 was larger than ocr1ax presubtraction, then set the carry.
+	;; If the carry was set, AKA, powerskip was < 1, then branch to wait_pwm_enable 
 		brcs	wait_pwm_enable
 		sts	powerskip, temp1
+	;; Skip if bit in register is set.
 		sbrs	flags1, STARTUP
 		rjmp	wait_for_edge0
+;;;  Bregg: Double check this, this whole subroutine is tricky AF!
 		ldi	YL, byte1(0xff * 0x100)	; Timing is 120 degrees, so wait for
 		ldi	YH, byte2(0xff * 0x100)	; what would be 0xff at 60 degrees
 		mov	temp7, ZH

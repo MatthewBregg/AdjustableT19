@@ -3303,7 +3303,6 @@ start_from_running:
 		movw	sys_control_l, YL	; align to a timing harmonic
 
 		sbr	flags0, (1<<SET_DUTY)
-	        ;;  BREGG, we are here!
 		; Set STARTUP flag and call update_timing which will set
 		; last_tcnt1 and set the duty (limited by STARTUP) and
 		; set POWER_ON.
@@ -3698,7 +3697,7 @@ wait_for_demag:
 		sbrc	flags1, EVAL_RC
 		rcall	evaluate_rc
 		in	temp3, ACSR
-		eor	temp3, flags1
+		eor	temp3, flags1 ; Exclusive OR.
 		.if HIGH_SIDE_PWM
 		sbrs	temp3, ACO		; Check for opposite level (demagnetization)
 		.else
@@ -3713,9 +3712,10 @@ wait_for_edge0:
 		lsr	XH
 		ror	XL
 		cpi	XL, ZC_CHECK_MIN
+	;; Set carry if 0x00/ZC_CHECK_MIN is larger than xl/xh.
 		cpc	XH, ZH
-		brcs	wait_for_edge_fast_min
-		breq	wait_for_edge_fast
+		brcs	wait_for_edge_fast_min ; Branch if carry set.
+		breq	wait_for_edge_fast     ; Branch if z is set, aka, xl/xh was equal to 0x00/ZC_CHECK_MIN.
 .if ZC_CHECK_MAX < 256
 		cpi	XL, ZC_CHECK_MAX
 .else
@@ -3773,6 +3773,7 @@ wait_commutation:
 		cpse	temp1, ZH
 		cbr	flags1, (1<<POWER_ON)	; Disable power when powerskipping
 		cpse	rc_timeout, ZH
+	// Wow, when I traced this, it returned ALLLLL the way from run1, holy shit!
 		ret
 		pop	temp1			; Throw away return address
 		pop	temp1

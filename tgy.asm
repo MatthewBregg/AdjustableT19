@@ -3778,7 +3778,7 @@ wait_commutation:
 		cpse	temp1, ZH
 		cbr	flags1, (1<<POWER_ON)	; Disable power when powerskipping
 		cpse	rc_timeout, ZH
-	// Wow, when I traced this, it returned ALLLLL the way from run1, holy shit!
+	;; Wow, when I traced this, it returned ALLLLL the way from run1, holy shit!
 		ret
 		pop	temp1			; Throw away return address
 		pop	temp1

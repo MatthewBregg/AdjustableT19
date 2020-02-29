@@ -3339,14 +3339,19 @@ start_from_running:
 
 .macro com2com3
 		; Cn off, Bn on
-		set_comp_phase_c temp1
+
+	set_comp_phase_c temp1 ; Set the ADC mux to the correct analog pin
+	;; 	if that is needed (not for this hardware). ^
 		cli
 		cbr	flags2, ALL_FETS
 		sbr	flags2, (1<<B_FET)
-		PWM_FOCUS_C_off
+		PWM_FOCUS_C_off ; Null OP with comp_pwm undefined.
+	;; Sets temp1 to the value of PORTD (Port used for PWMC_n);
+	;; Switches Cn off.
+	;; Sets temp 2 to the value of PORTD after switching C off.
 		PWM_C_clear
-		PWM_B_copy
-		PWM_FOCUS_B_on
+		PWM_B_copy 	; Turn on B IFF temp1/temp2 are NOT EQUAL.
+		PWM_FOCUS_B_on 	; Null op with comp_pwm undefined.
 		sei
 .endmacro
 

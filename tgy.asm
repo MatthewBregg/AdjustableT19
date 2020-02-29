@@ -744,6 +744,7 @@ eeprom_defaults_w:
 	.endmacro
 	.macro PWM_FOCUS_A_off
 		.if COMP_PWM
+		.error "NOPE"
 		in	temp3, PWM_COMP_A_PORT_in
 		PWM_COMP_A_off
 		in	temp4, PWM_COMP_A_PORT_in
@@ -751,12 +752,14 @@ eeprom_defaults_w:
 	.endmacro
 	.macro PWM_FOCUS_B_on
 		.if COMP_PWM
+		.error "NOPE"
 		cpse	temp3, temp4
 		PWM_COMP_B_on
 		.endif
 	.endmacro
 	.macro PWM_FOCUS_B_off
 		.if COMP_PWM
+		.error "NOPE"
 		in	temp3, PWM_COMP_B_PORT_in
 		PWM_COMP_B_off
 		in	temp4, PWM_COMP_B_PORT_in
@@ -764,15 +767,19 @@ eeprom_defaults_w:
 	.endmacro
 	.macro PWM_FOCUS_C_on
 		.if COMP_PWM
+	          .error "NOPE_COMP_PWM"
 		cpse	temp3, temp4
 		PWM_COMP_C_on
+	          .error "NOPE_COMP_PWM"
 		.endif
 	.endmacro
 	.macro PWM_FOCUS_C_off
 		.if COMP_PWM
+	          .error "NOPE_COMP_PWM"
 		in	temp3, PWM_COMP_C_PORT_in
 		PWM_COMP_C_off
 		in	temp4, PWM_COMP_C_PORT_in
+	          .error "NOPE_COMP_PWM"
 		.endif
 	.endmacro
 
@@ -1090,16 +1097,21 @@ eeprom_defaults_w:
 		sbr	@0, (1<<ACME)	; set Analog Comparator Multiplexer Enable
 		out	SFIOR, @0
 	.if defined(mux_a) && defined(mux_b) && defined(mux_c)
+	;; This doesn't happen, mux_c is undefined?
+	.error "NOPEX"
 		cbi	ADCSRA, ADEN	; Disable ADC to make sure ACME works
 	.endif
 .endmacro
 .macro comp_adc_disable
 	.if !defined(mux_a) || !defined(mux_b) || !defined(mux_c)
+	;;  This does happen!, mux_c somehow returns undefined??
+	;; If I understand this: MUX_C uses pin AIN1, so we must disable using the ADC pins 0-7
+	;; to read it, which means we must reenable the mux when we want to read a/b.
 		cbi	ADCSRA, ADEN	; Disable ADC if we enabled it to get AIN1
 	.endif
 .endmacro
 .macro comp_adc_enable
-		sbi	ADCSRA, ADEN	; Eisable ADC to effectively disable ACME
+		sbi	ADCSRA, ADEN	; Enable ADC to effectively disable ACME
 .endmacro
 .macro set_comp_phase_a
 	.if defined(mux_a)
@@ -1112,19 +1124,23 @@ eeprom_defaults_w:
 .endmacro
 .macro set_comp_phase_b
 	.if defined(mux_b)
+	.message "YupB"
 		ldi	@0, mux_b	; set comparator multiplexer to phase B
 		out	ADMUX, @0
 		comp_adc_disable
 	.else
+	.error "NopB"
 		comp_adc_enable
 	.endif
 .endmacro
 .macro set_comp_phase_c
 	.if defined(mux_c)
+	.error "NopC"
 		ldi	@0, mux_c	; set comparator multiplexer to phase C
 		out	ADMUX, @0
 		comp_adc_disable
 	.else
+	.message "YUPC"
 		comp_adc_enable
 	.endif
 .endmacro
@@ -3422,6 +3438,8 @@ start_from_running:
 		; Cp on, Bp off
 		set_comp_phase_b temp1
 		COMMUTATE_B_off
+	;; If power_on is false (cleared, skip commutating).
+	;; AKA: Only commutate is power_on is true!.
 		sbrc	flags1, POWER_ON
 		COMMUTATE_C_on
 .endmacro

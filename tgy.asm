@@ -265,6 +265,8 @@
 .if !defined(START_DELAY_US)
 .equ	START_DELAY_US	= 0	; Initial post-commutation wait during starting
 .endif
+	.message "START_DELAY_US is "
+	.message START_DELAY_US
 .equ	START_DSTEP_US	= 8	; Microseconds per start delay step
 .equ	START_DELAY_INC	= 15	; Wait step count increase (wraps in a byte)
 .equ	START_MOD_INC	= 4	; Start power modulation step count increase (wraps in a byte)
@@ -2732,6 +2734,7 @@ set_new_duty_zero:
 ; Multiply the 24-bit timing in temp1:temp2:temp3 by temp4 and add the top
 ; 24-bits to YL:YH:temp7.
 update_timing_add_degrees:
+	;;  Mul is tricky. Put the product h/l into temp6/temp5 respectively.
 		mul	temp1, temp4
 		add	YL, temp6		; Discard byte 1 already
 		adc	YH, ZH
@@ -2792,6 +2795,8 @@ set_ocr1a_abs_slow:
 		sbr	flags0, (1<<OCT1_PENDING)
 		lds	temp3, tcnt1x
 		in	temp4, TIFR
+	;;  What the heck is the point of the below cpi instruction???
+	;; Oh, setting the carry for adc, temp3 + zh + carry.
 		cpi	temp2, 0x80		; tcnt1x is right when TCNT1h[7] set;
 		sbrc	temp4, TOV1		; otherwise, if TOV1 is/was pending,
 		adc	temp3, ZH		; increment our copy of tcnt1x.
@@ -2826,9 +2831,10 @@ set_timing_degrees:
 		lds	temp2, timing_h
 		lds	YL, com_time_l
 		lds	YH, com_time_h
+	;;  Mul is tricky. Put the product h/l into temp6/temp5 respectively.
 		mul	temp1, temp4
 		add	YL, temp6
-		adc	YH, ZH
+		adc	YH, ZH 	; Handle if yl+temp6 > 255.
 		mul	temp2, temp4
 		add	YL, temp5
 		adc	YH, temp6
@@ -3597,6 +3603,7 @@ demag_timeout:
 		ldi	ZL, low(pwm_wdr)	; Stop PWM switching
 		; Interrupts will not turn on any FETs now
 		.if COMP_PWM && CPWM_SOFT
+	.error "NOPE1"
 		; Turn off complementary PWM if it was on,
 		; but leave on the high side commutation FET.
 		sbrc	flags2, A_FET
@@ -3605,13 +3612,16 @@ demag_timeout:
 		PWM_COMP_B_off
 		sbrc	flags2, C_FET
 		PWM_COMP_C_off
+	.error "NOPE1"
 		.elif COMP_PWM && !CPWM_SOFT
+	.error "NOPE2"
 		sbrc	flags2, A_FET
 		PWM_FOCUS_A_off
 		sbrc	flags2, B_FET
 		PWM_FOCUS_B_off
 		sbrc	flags2, C_FET
 		PWM_FOCUS_C_off
+	.error "NOPE2"
 		.endif
 		PWM_ALL_off temp1
 		RED_on
@@ -3643,6 +3653,7 @@ wait_timeout_start:
 		sts	start_delay, temp4
 wait_timeout_init:
 		sbr	flags1, (1<<STARTUP)	; Leave running mode
+	;; hankfully, looks like no arg passing here!
 		rjmp	wait_commutation	; Update timing and duty.
 ;-----bko-----------------------------------------------------------------
 wait_for_low:	cbr	flags1, (1<<ACO_EDGE_HIGH)
@@ -3812,13 +3823,17 @@ wait_commutation:
 wait_startup:
 		ldi3	YL, YH, temp4, START_DELAY_US * CPU_MHZ
 		mov	temp7, temp4
+;;; Set this up as the y/temp7 input to update_timing add degrees.
 		lds	temp1, goodies
 		cpi	temp1, 2		; After some good commutations,
+	;;  Branch if carry cleared.
 		brcc	wait_startup1		; skip additional delay injection
-		lds	temp4, start_delay
+		lds	temp4, start_delay	; Set this up as degrees to add_timing_degrees
 		ldi3	temp1, temp2, temp3, START_DSTEP_US * CPU_MHZ * 0x100
+;;;  Careful here, update_timing_add_degrees is passing info to set_ocr1a_rel!
+;;; Also careful, inputs are oh god, 1,2,3, 4, y/temp7.
 		rcall	update_timing_add_degrees	; Add temp4 (start_delay) START_DSTEPs of wait
-wait_startup1:	rcall	set_ocr1a_rel
+wait_startup1:	rcall	set_ocr1a_rel			; input y/temp7.
 		rcall	wait_OCT1_tot
 		ldi3	YL, YH, temp4, TIMEOUT_START * CPU_MHZ
 		mov	temp7, temp4

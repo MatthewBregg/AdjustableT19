@@ -1250,6 +1250,7 @@ pwm_on_high:
 		dec	tcnt2h
 		brne	pwm_on_again
 		ldi	ZL, pwm_on
+;;;  This just returns from pwm_on_high/pwm_on_fast_high.
 pwm_on_again:	out	SREG, i_sreg
 		reti
 
@@ -3636,7 +3637,7 @@ wait_timeout:
 		sbrc	flags1, STARTUP
 		rjmp	wait_timeout_start
 		cpi	XH, ZC_CHECK_FAST
-		brcs	wait_timeout_run
+		brcs	wait_timeout_run      ; Branch if carry set.
 		ldi	XH, ZC_CHECK_FAST - 1	; Limit back-tracking
 		cp	XL, XH
 		brcc	wait_timeout1
@@ -3648,6 +3649,8 @@ wait_timeout_run:
 wait_timeout_start:
 		sts	goodies, ZH		; Clear good commutation count
 		lds	temp4, start_delay
+	;; We have no add immediate, but we can subtract the negative.
+	;; https://www.avrfreaks.net/forum/add-immediate-avr-instruction-why-not
 		subi	temp4, -START_DELAY_INC	; Increase start (blanking) delay,
 		sbrc	flags1, STARTUP		; unless we were running
 		sts	start_delay, temp4

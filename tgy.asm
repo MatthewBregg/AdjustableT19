@@ -168,6 +168,8 @@
 .equ	HIGH_SIDE_PWM	= 0
 .endif
 
+;;; More comp_pwm info!
+;;; https://owenduffy.net/blog/?p=1239
 .if !defined(COMP_PWM)
 .equ	COMP_PWM	= 0	; During PWM off, switch high side on (unsafe on some boards!)
 .endif

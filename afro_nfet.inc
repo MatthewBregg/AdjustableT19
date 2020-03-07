@@ -67,8 +67,8 @@
 ;*********************
 ; PORT D definitions *
 ;*********************
-;.equ	mux_c		= 7 (comparator AN1)
-;.equ	sense_star	= 6 (comparator AN0)
+;.equ	mux_c		= 7 (comparator AN1) ;; THIS IS COMMENTED OUT
+;.equ	sense_star	= 6 (comparator AN0) ;; THIS IS COMMENTED OUT!!!
 .equ	CnFET		= 5
 .equ	BnFET		= 4
 .equ	AnFET		= 3

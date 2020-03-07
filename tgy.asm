@@ -179,6 +179,9 @@
 .endif
 .equ	DEAD_TIME_LOW	= DEAD_LOW_NS * CPU_MHZ / 1000
 .equ	DEAD_TIME_HIGH	= DEAD_HIGH_NS * CPU_MHZ / 1000
+	.message "DEADTIME IS"
+	.message DEAD_TIME_LOW 
+	.message DEAD_TIME_HIGH
 
 .if !defined(MOTOR_ADVANCE)
 .equ	MOTOR_ADVANCE	= 13	; Degrees of timing advance (0 - 30, 30 meaning no delay)
@@ -1282,12 +1285,13 @@ pwm_wdr:					; Just reset watchdog
 		wdr
 		reti
 
-pwm_off:
+pwm_off:			   ; CPSE = compare skip if equal
 		cpse	tcnt2h, ZH		; 2 cycles to skip when tcnt2h is 0
 		rjmp	pwm_again
 		wdr				; 1 cycle: watchdog reset
 		sbrc	flags1, FULL_POWER	; 2 cycles to skip if not full power
 		rjmp	pwm_on			; None of this off stuff if full power
+	;;  Set our next interrupt to whatever is in pwm_on_ptr.
 		lds	ZL, pwm_on_ptr		; 2 cycles
 		mov	tcnt2h, off_duty_h	; 1 cycle
 		sbrc	flags2, A_FET		; 2 cycles if skip, 1 cycle otherwise
@@ -1298,21 +1302,35 @@ pwm_off:
 		PWM_C_off
 		out	TCNT2, off_duty_l	; 1 cycle
 		.if CPWM_SOFT
+	.error "NOPE1"
 		sbrc	flags2, SKIP_CPWM	; 2 cycles if skip, 1 cycle otherwise
 		reti
+;;; COMP_PWM BEYOND THIS POINT.
 		.if DEAD_TIME_LOW > 9
+	.error "NOPE2" 		; Implement anyway, it's 0 cost with constepxr
+	;; 	and allows one more config option to change 
+	;;  without needing to remember to come back here.
 		.equ	EXTRA_DEAD_TIME_LOW = DEAD_TIME_LOW - 9
+	.error "NOPE3"
 		.else
 		.equ	EXTRA_DEAD_TIME_LOW = 0
 		.endif
+	.error "NOPE4"
 		cycle_delay EXTRA_DEAD_TIME_LOW - 2
 		.equ	CPWM_OVERHEAD_LOW = 9 + EXTRA_DEAD_TIME_LOW
 		sbrc	flags2, A_FET
+	.error "NOPE4"
 		PWM_COMP_A_on
+	.error "NOPE4"
 		sbrc	flags2, B_FET
+	.error "NOPE4"
 		PWM_COMP_B_on
+	.error "NOPE4"
 		sbrc	flags2, C_FET
+	.error "NOPE4"
 		PWM_COMP_C_on
+	.error "NOPE4"
+;;; END COMP_PWM
 		.endif
 		reti				; 4 cycles
 

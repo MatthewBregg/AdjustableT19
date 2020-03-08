@@ -2603,14 +2603,15 @@ fudiv24_loop:
 fudiv24_ep:
 		rol	XL
 		rol	XH
+;;;  Timing_duty_l is bit 3 of xl/xh, and timing_duty_h is the loop counter.
 		rol	timing_duty_l
 		dec	timing_duty_h
-		brne	fudiv24_loop
+		brne	fudiv24_loop ; Loop until timing_duty_h is 0, then continue;
 		com	XL
 		com	XH
 
 		cpi2	XL, XH, PWR_MAX_RPM1, temp4
-		brcc	update_timing4
+		brcc	update_timing4 ; Branch if carry clear.
 		ldi2	XL, XH, PWR_MAX_RPM1
 update_timing4:	movw	timing_duty_l, XL
 
@@ -2646,9 +2647,12 @@ update_timing4:	movw	timing_duty_l, XL
 		lds	temp7, last_tcnt1_x
 .endif
 
+	.message "motor_advance "
+	.message motor_advance
 		ldi	temp4, (30 - MOTOR_ADVANCE) * 256 / 60
 		rcall	update_timing_add_degrees
 .if TIMING_OFFSET
+	.error "NOPE"
 		sbiwx	YL, YH, TIMING_OFFSET * CPU_MHZ
 		ldi	temp4, byte3(TIMING_OFFSET * CPU_MHZ)
 		sbc	temp7, temp4
@@ -2686,6 +2690,7 @@ set_new_duty10:	cp	YL, sys_control_l
 		movw	YL, sys_control_l	; Limit duty to sys_control
 set_new_duty11:
 .if SLOW_THROTTLE
+	;; THIS IS ENABLED!
 		; If sys_control is higher than twice the current duty,
 		; limit it to that. This means that a steady-state duty
 		; cycle can double at any time, but any larger change will

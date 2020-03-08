@@ -2731,6 +2731,7 @@ set_new_duty_set:
 		; When off duty is short, skip complementary PWM; otherwise,
 		; compensate the off_duty time to account for the overhead.
 	.if CPWM_SOFT
+	.error "NOPENOPE"
 		set
 		ldi	temp4, pwm_on_fast	; Short off period: skip complementary PWM
 		cpse	temp2, ZH
@@ -2739,6 +2740,7 @@ set_new_duty_set:
 		brcs	set_new_duty21		; Off period < off-to-on cycle count plus interrupt overhead
 		clt				; Not short off period, unset SKIP_CPWM
 		sbiwx	temp1, temp2, CPWM_OVERHEAD_HIGH
+	.error "NOPENOPE"
 	.endif
 		ldi	temp4, pwm_on		; Off period < 0x100
 		cpse	temp2, ZH
@@ -2751,6 +2753,7 @@ set_new_duty21:
 		movw	off_duty_l, temp1	; Set new OFF duty for PWM interrupt
 		sts	pwm_on_ptr, temp4	; Set Next PWM ON interrupt vector
 	.if CPWM_SOFT
+	.error "NOPENOPE"
 		bld	flags2, SKIP_CPWM	; If to skip complementary PWM
 	.endif
 		sei

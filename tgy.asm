@@ -560,6 +560,8 @@ eeprom_defaults_w:
 .endmacro
 
 ; Compare any 24-bit immediate from a register triplet (@0:@1:@2 -= @3, maybe clobbering @4)
+;;; Expands out to just cpi/cpc the register triplet with @3, using @4, shortcutting and skipping ldi
+;;; with ZH when possible. 
 .macro cpiz3
 		cpi	@0, byte1(@3)
 	.if byte2(@3)
@@ -579,9 +581,11 @@ eeprom_defaults_w:
 ; Compare any 24-bit immediate from a register triplet (@0:@1:@2 -= @3, maybe clobbering @4)
 ; May not set Z flag, as above.
 .macro cpi3
+;;;  Take the low byte of @3.
 	.if byte1(@3)
 		cpiz3	@0, @1, @2, @3, @4
 	.else
+	;; If byte1 is zero, then just compare the upper 16 bits of both numbers.
 		cpi2	@1, @2, @3 >> 8, @4
 	.endif
 .endmacro
@@ -2535,6 +2539,8 @@ update_timing:
 	;--torukmakto4--------------------
 
         ; Limit maximum RPM (fastest timing) (this is the safety governor)
+	;; TLDR; Tests if temp1/2/3 is less than or equal to the constant.
+	;; Set the carry if temp1/2/3 < K
                 cpi3    temp1, temp2, temp3, TIMING_MAX * CPU_MHZ / 2, temp4
                 brcc    service_governor	; not reached TIMING_MAX yet
                 ldi3    temp1, temp2, temp3, TIMING_MAX * CPU_MHZ / 2
@@ -2562,6 +2568,8 @@ update_timing1:
 	; The actual current peak will depend on motor KV and voltage,
 	; so this is just an approximation. This is calculated smoothly
 	; with a (very slow) software divide only if timing permits.
+	.message "MIN PERIOD FOR DIVISION"
+	.message TIMING_RANGE3 * CPU_MHZ/2
 		cpi2	temp2, temp3, (TIMING_RANGE3 * CPU_MHZ / 2) >> 8, temp4
 		ldi2	XL, XH, MAX_POWER
 		brcs	update_timing4	; Fast timing: no duty limit.
@@ -2571,6 +2579,8 @@ update_timing1:
 		; This takes about one microsecond per loop, but we only take this path
 		; when the motor is spinning slowly.
 
+	.message "dividend update_timing1"
+	.message MAX_POWER * (TIMING_RANGE3 * CPU_MHZ / 2)
 		ldi	XL, byte3(MAX_POWER * (TIMING_RANGE3 * CPU_MHZ / 2) / 0x100)
 		ldi	XH, 33		; Iteration counter
 		movw	timing_duty_l, XL
@@ -2613,6 +2623,7 @@ update_timing4:	movw	timing_duty_l, XL
 		ror	temp1
 
 .if defined(DC_BIAS_CANCEL)
+	.error "Nope!"
 		lds	temp5, last_tcnt1_l	; restore original c as a'
 		lds	temp6, last_tcnt1_h
 		lds	temp4, last_tcnt1_x
@@ -3846,7 +3857,7 @@ wait_commutation:
 wait_startup:
 		ldi3	YL, YH, temp4, START_DELAY_US * CPU_MHZ
 		mov	temp7, temp4
-;;; Set this up as the y/temp7 input to update_timing add degrees.
+;;; Set this up as the y/temp7 input to update_timing_add_degrees.
 		lds	temp1, goodies
 		cpi	temp1, 2		; After some good commutations,
 	;;  Branch if carry cleared.

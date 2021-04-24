@@ -464,11 +464,13 @@ void loop(){
     reverseBoltToSwitch();
     //turn motor current off
     digitalWrite(8, HIGH);
-    // Set the Flywheel Governor to 19K RPM. 
+    // Set the Flywheel Governor. 
     for ( int i = 0; i != 10; ++i ) {
       // Set the speed 10 times for paranoia reasons!
-      // 19000 RPM makes for an excellent 140-150 RPM (if taddest bit low) on the green T19.
-      updateSpeedFixed(19000);
+      // Green
+      // 19K RPM makes for an excellent 140-150 FPS on the green T19.
+      // 20K RPM makes for an excellent 150-160 FPS on the green T19. I got 153-157 readings with waffles/accus, and on the dot 150s with brick tips.
+      updateSpeedFixed(20000);
     }
 
     //clear flag
